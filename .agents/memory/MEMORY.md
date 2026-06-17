@@ -1,0 +1,1 @@
+- [SplitWise auth + data architecture](splitwise-arch.md) — JWT auth, JSONB bills/members, AsyncStorage for personal only

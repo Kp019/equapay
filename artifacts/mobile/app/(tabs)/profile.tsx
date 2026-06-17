@@ -1,19 +1,19 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useState } from "react";
+import React from "react";
 import {
   Alert,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "INR", "CAD", "AUD", "JPY", "SGD"];
@@ -21,23 +21,25 @@ const CURRENCIES = ["USD", "EUR", "GBP", "INR", "CAD", "AUD", "JPY", "SGD"];
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { userName, currency, setUserName, setCurrency, groups, bills, personalExpenses } = useApp();
-  const [editingName, setEditingName] = useState(false);
-  const [nameInput, setNameInput] = useState(userName);
+  const { user, logout } = useAuth();
+  const { currency, setCurrency, groups, bills, personalExpenses } = useApp();
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
-  async function saveName() {
-    const trimmed = nameInput.trim();
-    if (!trimmed) {
-      Alert.alert("Name required", "Please enter your name.");
-      return;
-    }
-    await setUserName(trimmed);
-    setEditingName(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }
-
   const totalItems = bills.reduce((s, b) => s + b.items.length, 0);
+
+  function handleLogout() {
+    Alert.alert("Sign out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          await logout();
+        },
+      },
+    ]);
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -52,35 +54,17 @@ export default function ProfileScreen() {
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>Profile</Text>
         </View>
 
-        {/* Avatar */}
-        <View style={styles.avatarSection}>
-          <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-            <Text style={styles.avatarText}>{userName ? userName.charAt(0).toUpperCase() : "?"}</Text>
-          </View>
-          {!editingName ? (
-            <TouchableOpacity onPress={() => { setNameInput(userName); setEditingName(true); }} style={styles.nameRow} activeOpacity={0.7}>
-              <Text style={[styles.displayName, { color: colors.foreground }]}>
-                {userName || "Tap to set your name"}
-              </Text>
-              <Feather name="edit-2" size={14} color={colors.mutedForeground} />
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.nameEditRow}>
-              <TextInput
-                value={nameInput}
-                onChangeText={setNameInput}
-                style={[styles.nameInput, { backgroundColor: colors.card, borderColor: colors.primary, color: colors.foreground }]}
-                autoFocus
-                placeholder="Your name"
-                placeholderTextColor={colors.mutedForeground}
-                returnKeyType="done"
-                onSubmitEditing={saveName}
-              />
-              <TouchableOpacity onPress={saveName} style={[styles.saveBtn, { backgroundColor: colors.primary }]} activeOpacity={0.8}>
-                <Text style={styles.saveBtnText}>Save</Text>
-              </TouchableOpacity>
+        {/* User card */}
+        <View style={styles.section}>
+          <View style={[styles.userCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+              <Text style={styles.avatarText}>{user?.displayName.charAt(0).toUpperCase() ?? "?"}</Text>
             </View>
-          )}
+            <View style={styles.userInfo}>
+              <Text style={[styles.displayName, { color: colors.foreground }]}>{user?.displayName}</Text>
+              <Text style={[styles.username, { color: colors.mutedForeground }]}>@{user?.username}</Text>
+            </View>
+          </View>
         </View>
 
         {/* Stats */}
@@ -119,14 +103,16 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* About */}
+        {/* Sign out */}
         <View style={styles.section}>
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.aboutRow}>
-              <Feather name="info" size={16} color={colors.mutedForeground} />
-              <Text style={[styles.aboutText, { color: colors.mutedForeground }]}>SplitWise · Track & Split Expenses</Text>
-            </View>
-          </View>
+          <TouchableOpacity
+            onPress={handleLogout}
+            style={[styles.logoutBtn, { backgroundColor: colors.negative + "14", borderColor: colors.negative + "30" }]}
+            activeOpacity={0.7}
+          >
+            <Feather name="log-out" size={18} color={colors.negative} />
+            <Text style={[styles.logoutText, { color: colors.negative }]}>Sign Out</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
@@ -155,19 +141,16 @@ function StatRow({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 20, marginBottom: 24 },
+  header: { paddingHorizontal: 20, marginBottom: 20 },
   headerTitle: { fontSize: 26, fontFamily: "Inter_700Bold" },
-  avatarSection: { alignItems: "center", marginBottom: 32, gap: 12 },
-  avatar: { width: 80, height: 80, borderRadius: 40, alignItems: "center", justifyContent: "center" },
-  avatarText: { fontSize: 32, color: "#fff", fontFamily: "Inter_700Bold" },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  displayName: { fontSize: 20, fontFamily: "Inter_600SemiBold" },
-  nameEditRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 20 },
-  nameInput: { flex: 1, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, fontFamily: "Inter_400Regular" },
-  saveBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 },
-  saveBtnText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 15 },
   section: { paddingHorizontal: 20, marginBottom: 20 },
   sectionTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 },
+  userCard: { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 16, padding: 16, borderWidth: 1 },
+  avatar: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
+  avatarText: { fontSize: 24, color: "#fff", fontFamily: "Inter_700Bold" },
+  userInfo: { flex: 1 },
+  displayName: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
+  username: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2 },
   card: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
   statRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
   statLabel: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
@@ -176,6 +159,6 @@ const styles = StyleSheet.create({
   currencyGrid: { flexDirection: "row", flexWrap: "wrap", padding: 12, gap: 8 },
   currencyBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
   currencyText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  aboutRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 16 },
-  aboutText: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  logoutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderWidth: 1, borderRadius: 16, paddingVertical: 16 },
+  logoutText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
 });

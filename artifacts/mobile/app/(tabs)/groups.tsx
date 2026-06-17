@@ -5,6 +5,7 @@ import React, { useMemo } from "react";
 import {
   Alert,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,16 +22,13 @@ export default function GroupsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { groups, bills, currency, deleteGroup, getGroupBalances } = useApp();
+  const { groups, bills, currency, deleteGroup, getGroupBalances, loadingGroups, refreshGroups } = useApp();
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
   const groupsWithStats = useMemo(() => {
     return groups.map((g) => {
       const groupBills = bills.filter((b) => b.groupId === g.id);
-      const total = groupBills.reduce(
-        (s, b) => s + b.items.reduce((si, i) => si + i.amount, 0),
-        0
-      );
+      const total = groupBills.reduce((s, b) => s + b.items.reduce((si, i) => si + i.amount, 0), 0);
       const balances = getGroupBalances(g.id);
       const net = balances.reduce((s, b) => s + b.amount, 0);
       return { ...g, total, net, billCount: groupBills.length };
@@ -49,10 +47,8 @@ export default function GroupsScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingTop: topPadding + 16,
-          paddingBottom: Platform.OS === "web" ? 120 : 100,
-        }}
+        refreshControl={<RefreshControl refreshing={loadingGroups} onRefresh={refreshGroups} tintColor={colors.primary} />}
+        contentContainerStyle={{ paddingTop: topPadding + 16, paddingBottom: Platform.OS === "web" ? 120 : 100 }}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -62,16 +58,23 @@ export default function GroupsScreen() {
               {groups.length} {groups.length === 1 ? "group" : "groups"}
             </Text>
           </View>
-          <TouchableOpacity
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push("/create-group");
-            }}
-            style={[styles.addBtn, { backgroundColor: colors.primary }]}
-            activeOpacity={0.8}
-          >
-            <Feather name="plus" size={20} color="#fff" />
-          </TouchableOpacity>
+          <View style={styles.headerBtns}>
+            <TouchableOpacity
+              onPress={() => router.push("/join-group")}
+              style={[styles.joinBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              activeOpacity={0.7}
+            >
+              <Feather name="link" size={16} color={colors.foreground} />
+              <Text style={[styles.joinBtnText, { color: colors.foreground }]}>Join</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/create-group"); }}
+              style={[styles.addBtn, { backgroundColor: colors.primary }]}
+              activeOpacity={0.8}
+            >
+              <Feather name="plus" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {groupsWithStats.length === 0 ? (
@@ -81,16 +84,18 @@ export default function GroupsScreen() {
             </View>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No groups yet</Text>
             <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
-              Create a group to start splitting bills with friends, family, or roommates.
+              Create a group to start splitting bills, or join an existing one with an invite code.
             </Text>
-            <TouchableOpacity
-              onPress={() => router.push("/create-group")}
-              style={[styles.emptyBtn, { backgroundColor: colors.primary }]}
-              activeOpacity={0.8}
-            >
-              <Feather name="plus" size={16} color="#fff" />
-              <Text style={styles.emptyBtnText}>Create Group</Text>
-            </TouchableOpacity>
+            <View style={styles.emptyActions}>
+              <TouchableOpacity onPress={() => router.push("/create-group")} style={[styles.emptyBtn, { backgroundColor: colors.primary }]} activeOpacity={0.8}>
+                <Feather name="plus" size={16} color="#fff" />
+                <Text style={styles.emptyBtnText}>Create Group</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push("/join-group")} style={[styles.emptyBtnOutline, { borderColor: colors.border }]} activeOpacity={0.8}>
+                <Feather name="link" size={16} color={colors.foreground} />
+                <Text style={[styles.emptyBtnOutlineText, { color: colors.foreground }]}>Join Group</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <View style={styles.list}>
@@ -104,9 +109,7 @@ export default function GroupsScreen() {
               >
                 <View style={styles.groupTop}>
                   <View style={[styles.avatar, { backgroundColor: colors.primary + "20" }]}>
-                    <Text style={[styles.avatarText, { color: colors.primary }]}>
-                      {g.name.charAt(0).toUpperCase()}
-                    </Text>
+                    <Text style={[styles.avatarText, { color: colors.primary }]}>{g.name.charAt(0).toUpperCase()}</Text>
                   </View>
                   <View style={styles.groupInfo}>
                     <Text style={[styles.groupName, { color: colors.foreground }]}>{g.name}</Text>
@@ -120,28 +123,12 @@ export default function GroupsScreen() {
                 <View style={styles.groupBottom}>
                   <View>
                     <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>Total spent</Text>
-                    <Text style={[styles.metaValue, { color: colors.foreground }]}>
-                      {formatCurrency(g.total, currency)}
-                    </Text>
+                    <Text style={[styles.metaValue, { color: colors.foreground }]}>{formatCurrency(g.total, currency)}</Text>
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
                     <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>Your balance</Text>
-                    <Text
-                      style={[
-                        styles.metaValue,
-                        {
-                          color:
-                            g.net === 0
-                              ? colors.mutedForeground
-                              : g.net > 0
-                              ? colors.positive
-                              : colors.negative,
-                        },
-                      ]}
-                    >
-                      {g.net === 0
-                        ? "Settled"
-                        : (g.net > 0 ? "+" : "") + formatCurrency(g.net, currency)}
+                    <Text style={[styles.metaValue, { color: g.net === 0 ? colors.mutedForeground : g.net > 0 ? colors.positive : colors.negative }]}>
+                      {g.net === 0 ? "Settled" : (g.net > 0 ? "+" : "") + formatCurrency(g.net, currency)}
                     </Text>
                   </View>
                 </View>
@@ -159,6 +146,9 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 20 },
   headerTitle: { fontSize: 26, fontFamily: "Inter_700Bold" },
   headerSub: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2 },
+  headerBtns: { flexDirection: "row", gap: 8, alignItems: "center" },
+  joinBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
+  joinBtnText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   addBtn: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
   list: { paddingHorizontal: 20, gap: 12 },
   groupCard: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
@@ -176,6 +166,9 @@ const styles = StyleSheet.create({
   emptyIcon: { width: 80, height: 80, borderRadius: 40, alignItems: "center", justifyContent: "center", marginBottom: 8 },
   emptyTitle: { fontSize: 20, fontFamily: "Inter_600SemiBold" },
   emptySubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 21 },
-  emptyBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, marginTop: 8 },
-  emptyBtnText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 15 },
+  emptyActions: { flexDirection: "row", gap: 10, marginTop: 8 },
+  emptyBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12 },
+  emptyBtnText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  emptyBtnOutline: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
+  emptyBtnOutlineText: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
 });

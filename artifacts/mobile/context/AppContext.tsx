@@ -1,20 +1,29 @@
+/**
+ * AppContext – all group/bill data lives on the server.
+ * Personal expenses stay in AsyncStorage (device-only).
+ */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
+import { useAuth } from "./AuthContext";
 
+// ─── Types (mirrored from DB schema) ─────────────────────────────────────────
 export interface Member {
   id: string;
   name: string;
+  userId?: string;
 }
 
 export interface Group {
   id: string;
   name: string;
+  createdById: string;
   members: Member[];
   createdAt: string;
 }
@@ -51,22 +60,23 @@ export interface BalanceItem {
   amount: number;
 }
 
-interface AppState {
+// ─── Context value ────────────────────────────────────────────────────────────
+interface AppContextValue {
   userId: string;
-  userName: string;
   currency: string;
   groups: Group[];
   bills: Bill[];
   personalExpenses: PersonalExpense[];
-}
-
-interface AppContextValue extends AppState {
-  setUserName: (name: string) => Promise<void>;
-  setCurrency: (currency: string) => Promise<void>;
-  createGroup: (name: string, memberNames: string[]) => Promise<Group>;
+  loadingGroups: boolean;
+  setCurrency: (c: string) => void;
+  refreshGroups: () => Promise<void>;
+  refreshBills: (groupId: string) => Promise<void>;
+  createGroup: (name: string, memberUserIds: string[]) => Promise<Group>;
   deleteGroup: (id: string) => Promise<void>;
   addBill: (bill: Omit<Bill, "id" | "date">) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
+  joinGroupByCode: (code: string) => Promise<Group>;
+  getInviteCode: (groupId: string) => Promise<string>;
   addPersonalExpense: (expense: Omit<PersonalExpense, "id" | "date">) => Promise<void>;
   deletePersonalExpense: (id: string) => Promise<void>;
   getGroupBalances: (groupId: string) => BalanceItem[];
@@ -75,22 +85,14 @@ interface AppContextValue extends AppState {
   getTotalBalance: () => number;
 }
 
-const STORAGE_KEY = "splitwise_app_data_v2";
+const AppContext = createContext<AppContextValue | null>(null);
 
-function generateId(): string {
+const CURRENCY_KEY = "splitwise_currency";
+const PERSONAL_KEY = "splitwise_personal_v1";
+
+function generateId() {
   return Date.now().toString() + Math.random().toString(36).substr(2, 9);
 }
-
-const defaultState: AppState = {
-  userId: "",
-  userName: "",
-  currency: "USD",
-  groups: [],
-  bills: [],
-  personalExpenses: [],
-};
-
-const AppContext = createContext<AppContextValue | null>(null);
 
 export function getMemberShareFromBill(bill: Bill, memberId: string): number {
   let total = 0;
@@ -103,151 +105,198 @@ export function getMemberShareFromBill(bill: Bill, memberId: string): number {
 }
 
 export function getBillTotalAmount(bill: Bill): number {
-  return parseFloat(bill.items.reduce((sum, i) => sum + i.amount, 0).toFixed(2));
+  return parseFloat(bill.items.reduce((s, i) => s + i.amount, 0).toFixed(2));
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<AppState>(defaultState);
-  const [loaded, setLoaded] = useState(false);
+  const { user, apiRequest } = useAuth();
+  const userId = user?.id ?? "";
 
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [bills, setBills] = useState<Bill[]>([]);
+  const [personalExpenses, setPersonalExpenses] = useState<PersonalExpense[]>([]);
+  const [currency, setCurrencyState] = useState("USD");
+  const [loadingGroups, setLoadingGroups] = useState(false);
+
+  // Track which group IDs we've loaded bills for
+  const loadedBillsFor = useRef<Set<string>>(new Set());
+
+  // ── Load currency from storage ──────────────────────────────────────────────
   useEffect(() => {
-    (async () => {
+    AsyncStorage.getItem(CURRENCY_KEY).then((v) => { if (v) setCurrencyState(v); });
+    AsyncStorage.getItem(PERSONAL_KEY).then((v) => {
+      if (v) setPersonalExpenses(JSON.parse(v));
+    });
+  }, []);
+
+  // ── Load groups when user logs in ──────────────────────────────────────────
+  useEffect(() => {
+    if (userId) {
+      loadedBillsFor.current = new Set();
+      refreshGroups();
+    } else {
+      setGroups([]);
+      setBills([]);
+    }
+  }, [userId]);
+
+  const refreshGroups = useCallback(async () => {
+    if (!userId) return;
+    setLoadingGroups(true);
+    try {
+      const { groups: g } = await apiRequest<{ groups: Group[] }>("/groups");
+      setGroups(g);
+    } catch {
+    } finally {
+      setLoadingGroups(false);
+    }
+  }, [userId, apiRequest]);
+
+  const refreshBills = useCallback(
+    async (groupId: string) => {
+      if (!userId) return;
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw) as AppState;
-          setState(parsed);
-        } else {
-          const newUserId = generateId();
-          setState((prev) => ({ ...prev, userId: newUserId }));
-        }
-      } catch {
-      } finally {
-        setLoaded(true);
-      }
-    })();
-  }, []);
-
-  const save = useCallback(async (next: AppState) => {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    setState(next);
-  }, []);
-
-  const setUserName = useCallback(
-    async (name: string) => save({ ...state, userName: name }),
-    [state, save]
+        const { bills: b } = await apiRequest<{ bills: Bill[] }>(`/groups/${groupId}/bills`);
+        setBills((prev) => {
+          const rest = prev.filter((x) => x.groupId !== groupId);
+          return [...rest, ...b];
+        });
+        loadedBillsFor.current.add(groupId);
+      } catch {}
+    },
+    [userId, apiRequest]
   );
 
-  const setCurrency = useCallback(
-    async (currency: string) => save({ ...state, currency }),
-    [state, save]
-  );
+  const setCurrency = useCallback((c: string) => {
+    setCurrencyState(c);
+    AsyncStorage.setItem(CURRENCY_KEY, c);
+  }, []);
 
   const createGroup = useCallback(
-    async (name: string, memberNames: string[]): Promise<Group> => {
-      const meAsMember: Member = { id: state.userId, name: state.userName || "You" };
-      const otherMembers: Member[] = memberNames
-        .filter((n) => n.trim().length > 0)
-        .map((n) => ({ id: generateId(), name: n.trim() }));
-      const group: Group = {
-        id: generateId(),
-        name,
-        members: [meAsMember, ...otherMembers],
-        createdAt: new Date().toISOString(),
-      };
-      await save({ ...state, groups: [...state.groups, group] });
+    async (name: string, memberUserIds: string[]): Promise<Group> => {
+      const { group } = await apiRequest<{ group: Group }>("/groups", {
+        method: "POST",
+        body: JSON.stringify({ name, memberUserIds }),
+      });
+      setGroups((prev) => [...prev, group]);
       return group;
     },
-    [state, save]
+    [apiRequest]
   );
 
   const deleteGroup = useCallback(
     async (id: string) => {
-      await save({
-        ...state,
-        groups: state.groups.filter((g) => g.id !== id),
-        bills: state.bills.filter((b) => b.groupId !== id),
-      });
+      await apiRequest(`/groups/${id}`, { method: "DELETE" });
+      setGroups((prev) => prev.filter((g) => g.id !== id));
+      setBills((prev) => prev.filter((b) => b.groupId !== id));
+      loadedBillsFor.current.delete(id);
     },
-    [state, save]
+    [apiRequest]
   );
 
   const addBill = useCallback(
     async (bill: Omit<Bill, "id" | "date">) => {
-      const newBill: Bill = { ...bill, id: generateId(), date: new Date().toISOString() };
-      await save({ ...state, bills: [...state.bills, newBill] });
+      const { bill: b } = await apiRequest<{ bill: Bill }>(`/groups/${bill.groupId}/bills`, {
+        method: "POST",
+        body: JSON.stringify(bill),
+      });
+      setBills((prev) => [...prev, b]);
     },
-    [state, save]
+    [apiRequest]
   );
 
   const deleteBill = useCallback(
     async (id: string) => {
-      await save({ ...state, bills: state.bills.filter((b) => b.id !== id) });
+      await apiRequest(`/bills/${id}`, { method: "DELETE" });
+      setBills((prev) => prev.filter((b) => b.id !== id));
     },
-    [state, save]
+    [apiRequest]
   );
+
+  const getInviteCode = useCallback(
+    async (groupId: string): Promise<string> => {
+      const { code } = await apiRequest<{ code: string }>(`/groups/${groupId}/invite`, {
+        method: "POST",
+      });
+      return code;
+    },
+    [apiRequest]
+  );
+
+  const joinGroupByCode = useCallback(
+    async (code: string): Promise<Group> => {
+      const { group } = await apiRequest<{ group: Group }>(`/invites/${code}/join`, {
+        method: "POST",
+      });
+      setGroups((prev) => {
+        const exists = prev.find((g) => g.id === group.id);
+        return exists ? prev : [...prev, group];
+      });
+      return group;
+    },
+    [apiRequest]
+  );
+
+  // ─── Personal expenses (local) ────────────────────────────────────────────
+  const savePersonal = useCallback(async (items: PersonalExpense[]) => {
+    setPersonalExpenses(items);
+    await AsyncStorage.setItem(PERSONAL_KEY, JSON.stringify(items));
+  }, []);
 
   const addPersonalExpense = useCallback(
     async (expense: Omit<PersonalExpense, "id" | "date">) => {
-      const newExpense: PersonalExpense = {
-        ...expense,
-        id: generateId(),
-        date: new Date().toISOString(),
-      };
-      await save({ ...state, personalExpenses: [...state.personalExpenses, newExpense] });
+      const item: PersonalExpense = { ...expense, id: generateId(), date: new Date().toISOString() };
+      setPersonalExpenses((prev) => {
+        const next = [...prev, item];
+        AsyncStorage.setItem(PERSONAL_KEY, JSON.stringify(next));
+        return next;
+      });
     },
-    [state, save]
+    []
   );
 
   const deletePersonalExpense = useCallback(
     async (id: string) => {
-      await save({
-        ...state,
-        personalExpenses: state.personalExpenses.filter((e) => e.id !== id),
+      setPersonalExpenses((prev) => {
+        const next = prev.filter((e) => e.id !== id);
+        AsyncStorage.setItem(PERSONAL_KEY, JSON.stringify(next));
+        return next;
       });
     },
-    [state, save]
+    []
   );
 
+  // ─── Balance calculations ─────────────────────────────────────────────────
   const getMemberShare = useCallback(
     (bill: Bill, memberId: string) => getMemberShareFromBill(bill, memberId),
     []
   );
 
-  const getBillTotal = useCallback(
-    (bill: Bill) => getBillTotalAmount(bill),
-    []
-  );
+  const getBillTotal = useCallback((bill: Bill) => getBillTotalAmount(bill), []);
 
   const getGroupBalances = useCallback(
     (groupId: string): BalanceItem[] => {
-      const groupBills = state.bills.filter((b) => b.groupId === groupId);
-      const group = state.groups.find((g) => g.id === groupId);
+      const groupBills = bills.filter((b) => b.groupId === groupId);
+      const group = groups.find((g) => g.id === groupId);
       const balanceMap: Record<string, { memberName: string; amount: number }> = {};
 
       for (const bill of groupBills) {
-        if (bill.paidById === state.userId) {
-          // I paid — track what each other member owes me per item
+        if (bill.paidById === userId) {
           for (const item of bill.items) {
             if (item.splitMemberIds.length === 0) continue;
             const share = item.amount / item.splitMemberIds.length;
             for (const mId of item.splitMemberIds) {
-              if (mId === state.userId) continue;
-              const memberName =
-                group?.members.find((m) => m.id === mId)?.name ?? mId;
-              if (!balanceMap[mId]) {
-                balanceMap[mId] = { memberName, amount: 0 };
-              }
+              if (mId === userId) continue;
+              const name = group?.members.find((m) => m.id === mId)?.name ?? mId;
+              if (!balanceMap[mId]) balanceMap[mId] = { memberName: name, amount: 0 };
               balanceMap[mId].amount += share;
             }
           }
         } else {
-          // Someone else paid — I owe them my share
-          const myShare = getMemberShareFromBill(bill, state.userId);
+          const myShare = getMemberShareFromBill(bill, userId);
           if (myShare > 0) {
-            if (!balanceMap[bill.paidById]) {
+            if (!balanceMap[bill.paidById])
               balanceMap[bill.paidById] = { memberName: bill.paidByName, amount: 0 };
-            }
             balanceMap[bill.paidById].amount -= myShare;
           }
         }
@@ -259,35 +308,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         amount: parseFloat(amount.toFixed(2)),
       }));
     },
-    [state.bills, state.groups, state.userId]
+    [bills, groups, userId]
   );
 
   const getTotalBalance = useCallback((): number => {
     let total = 0;
-    for (const group of state.groups) {
+    for (const group of groups) {
       const balances = getGroupBalances(group.id);
       for (const b of balances) total += b.amount;
     }
     return parseFloat(total.toFixed(2));
-  }, [state.groups, getGroupBalances]);
-
-  if (!loaded) return null;
+  }, [groups, getGroupBalances]);
 
   return (
     <AppContext.Provider
       value={{
-        ...state,
-        setUserName,
+        userId,
+        currency,
+        groups,
+        bills,
+        personalExpenses,
+        loadingGroups,
         setCurrency,
+        refreshGroups,
+        refreshBills,
         createGroup,
         deleteGroup,
         addBill,
         deleteBill,
+        joinGroupByCode,
+        getInviteCode,
         addPersonalExpense,
         deletePersonalExpense,
+        getGroupBalances,
         getMemberShare,
         getBillTotal,
-        getGroupBalances,
         getTotalBalance,
       }}
     >

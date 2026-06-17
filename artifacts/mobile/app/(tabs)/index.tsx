@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { formatCurrency, formatDate } from "@/utils/format";
 
@@ -19,45 +20,26 @@ export default function OverviewScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const {
-    userName,
-    currency,
-    groups,
-    bills,
-    personalExpenses,
-    getTotalBalance,
-    getGroupBalances,
-  } = useApp();
+  const { user } = useAuth();
+  const { currency, groups, bills, personalExpenses, getTotalBalance, getGroupBalances } = useApp();
 
   const totalBalance = getTotalBalance();
   const isPositive = totalBalance >= 0;
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
   const recentBills = useMemo(
-    () =>
-      [...bills]
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .slice(0, 5),
+    () => [...bills].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5),
     [bills]
   );
 
-  const totalPersonalSpend = useMemo(
-    () => personalExpenses.reduce((s, e) => s + e.amount, 0),
-    [personalExpenses]
-  );
-
-  const totalBillItems = useMemo(
-    () => bills.reduce((s, b) => s + b.items.length, 0),
-    [bills]
-  );
+  const totalPersonalSpend = useMemo(() => personalExpenses.reduce((s, e) => s + e.amount, 0), [personalExpenses]);
 
   const groupsWithBalance = useMemo(
-    () =>
-      groups.map((g) => {
-        const balances = getGroupBalances(g.id);
-        const net = balances.reduce((s, b) => s + b.amount, 0);
-        return { ...g, net };
-      }),
+    () => groups.map((g) => {
+      const balances = getGroupBalances(g.id);
+      const net = balances.reduce((s, b) => s + b.amount, 0);
+      return { ...g, net };
+    }),
     [groups, getGroupBalances]
   );
 
@@ -65,16 +47,13 @@ export default function OverviewScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingTop: topPadding + 16,
-          paddingBottom: Platform.OS === "web" ? 120 : 100,
-        }}
+        contentContainerStyle={{ paddingTop: topPadding + 16, paddingBottom: Platform.OS === "web" ? 120 : 100 }}
       >
         {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={[styles.greeting, { color: colors.mutedForeground }]}>
-              {userName ? `Hi, ${userName}` : "Welcome back"}
+              {user?.displayName ? `Hi, ${user.displayName.split(" ")[0]}` : "Welcome back"}
             </Text>
             <Text style={[styles.headerTitle, { color: colors.foreground }]}>Overview</Text>
           </View>
@@ -120,20 +99,15 @@ export default function OverviewScreen() {
                 activeOpacity={0.7}
               >
                 <View style={[styles.groupAvatar, { backgroundColor: colors.primary + "20" }]}>
-                  <Text style={[styles.groupAvatarText, { color: colors.primary }]}>
-                    {g.name.charAt(0).toUpperCase()}
-                  </Text>
+                  <Text style={[styles.groupAvatarText, { color: colors.primary }]}>{g.name.charAt(0).toUpperCase()}</Text>
                 </View>
                 <View style={styles.groupRowContent}>
                   <Text style={[styles.groupRowName, { color: colors.foreground }]}>{g.name}</Text>
-                  <Text style={[styles.groupRowMembers, { color: colors.mutedForeground }]}>
-                    {g.members.length} members
-                  </Text>
+                  <Text style={[styles.groupRowMembers, { color: colors.mutedForeground }]}>{g.members.length} members</Text>
                 </View>
                 {g.net !== 0 ? (
                   <Text style={[styles.groupRowBalance, { color: g.net > 0 ? colors.positive : colors.negative }]}>
-                    {g.net > 0 ? "+" : ""}
-                    {formatCurrency(g.net, currency)}
+                    {g.net > 0 ? "+" : ""}{formatCurrency(g.net, currency)}
                   </Text>
                 ) : (
                   <Text style={[styles.settledText, { color: colors.mutedForeground }]}>Settled</Text>
@@ -167,9 +141,7 @@ export default function OverviewScreen() {
                       {group?.name} · {b.items.length} {b.items.length === 1 ? "item" : "items"} · {formatDate(b.date)}
                     </Text>
                   </View>
-                  <Text style={[styles.activityAmount, { color: colors.foreground }]}>
-                    {formatCurrency(billTotal, currency)}
-                  </Text>
+                  <Text style={[styles.activityAmount, { color: colors.foreground }]}>{formatCurrency(billTotal, currency)}</Text>
                 </TouchableOpacity>
               );
             })}
