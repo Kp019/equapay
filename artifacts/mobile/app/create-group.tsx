@@ -49,13 +49,6 @@ export default function CreateGroupScreen() {
       Alert.alert("Group name required", "Please enter a name for your group.");
       return;
     }
-    if (!userName) {
-      Alert.alert(
-        "Set your name first",
-        "Go to the Profile tab and set your name before creating a group."
-      );
-      return;
-    }
     const validMembers = members.filter((m) => m.trim().length > 0);
     setLoading(true);
     try {

@@ -134,7 +134,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const createGroup = useCallback(
     async (name: string, memberNames: string[]): Promise<Group> => {
-      const meAsMember: Member = { id: state.userId, name: state.userName };
+      const meAsMember: Member = { id: state.userId, name: state.userName || "You" };
       const otherMembers: Member[] = memberNames
         .filter((n) => n.trim().length > 0)
         .map((n) => ({ id: generateId(), name: n.trim() }));
