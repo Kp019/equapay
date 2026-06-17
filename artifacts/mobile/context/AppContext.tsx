@@ -19,21 +19,20 @@ export interface Group {
   createdAt: string;
 }
 
-export interface ExpenseSplit {
-  memberId: string;
-  memberName: string;
+export interface BillItem {
+  id: string;
+  name: string;
   amount: number;
+  splitMemberIds: string[];
 }
 
-export interface GroupExpense {
+export interface Bill {
   id: string;
   groupId: string;
   title: string;
-  amount: number;
   paidById: string;
   paidByName: string;
-  splits: ExpenseSplit[];
-  category: string;
+  items: BillItem[];
   date: string;
 }
 
@@ -57,7 +56,7 @@ interface AppState {
   userName: string;
   currency: string;
   groups: Group[];
-  groupExpenses: GroupExpense[];
+  bills: Bill[];
   personalExpenses: PersonalExpense[];
 }
 
@@ -66,15 +65,17 @@ interface AppContextValue extends AppState {
   setCurrency: (currency: string) => Promise<void>;
   createGroup: (name: string, memberNames: string[]) => Promise<Group>;
   deleteGroup: (id: string) => Promise<void>;
-  addGroupExpense: (expense: Omit<GroupExpense, "id" | "date">) => Promise<void>;
-  deleteGroupExpense: (id: string) => Promise<void>;
+  addBill: (bill: Omit<Bill, "id" | "date">) => Promise<void>;
+  deleteBill: (id: string) => Promise<void>;
   addPersonalExpense: (expense: Omit<PersonalExpense, "id" | "date">) => Promise<void>;
   deletePersonalExpense: (id: string) => Promise<void>;
   getGroupBalances: (groupId: string) => BalanceItem[];
+  getMemberShare: (bill: Bill, memberId: string) => number;
+  getBillTotal: (bill: Bill) => number;
   getTotalBalance: () => number;
 }
 
-const STORAGE_KEY = "splitwise_app_data";
+const STORAGE_KEY = "splitwise_app_data_v2";
 
 function generateId(): string {
   return Date.now().toString() + Math.random().toString(36).substr(2, 9);
@@ -85,11 +86,25 @@ const defaultState: AppState = {
   userName: "",
   currency: "USD",
   groups: [],
-  groupExpenses: [],
+  bills: [],
   personalExpenses: [],
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
+
+export function getMemberShareFromBill(bill: Bill, memberId: string): number {
+  let total = 0;
+  for (const item of bill.items) {
+    if (item.splitMemberIds.includes(memberId) && item.splitMemberIds.length > 0) {
+      total += item.amount / item.splitMemberIds.length;
+    }
+  }
+  return parseFloat(total.toFixed(2));
+}
+
+export function getBillTotalAmount(bill: Bill): number {
+  return parseFloat(bill.items.reduce((sum, i) => sum + i.amount, 0).toFixed(2));
+}
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(defaultState);
@@ -119,16 +134,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setUserName = useCallback(
-    async (name: string) => {
-      await save({ ...state, userName: name });
-    },
+    async (name: string) => save({ ...state, userName: name }),
     [state, save]
   );
 
   const setCurrency = useCallback(
-    async (currency: string) => {
-      await save({ ...state, currency });
-    },
+    async (currency: string) => save({ ...state, currency }),
     [state, save]
   );
 
@@ -144,8 +155,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         members: [meAsMember, ...otherMembers],
         createdAt: new Date().toISOString(),
       };
-      const next = { ...state, groups: [...state.groups, group] };
-      await save(next);
+      await save({ ...state, groups: [...state.groups, group] });
       return group;
     },
     [state, save]
@@ -153,39 +163,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteGroup = useCallback(
     async (id: string) => {
-      const next = {
+      await save({
         ...state,
         groups: state.groups.filter((g) => g.id !== id),
-        groupExpenses: state.groupExpenses.filter((e) => e.groupId !== id),
-      };
-      await save(next);
+        bills: state.bills.filter((b) => b.groupId !== id),
+      });
     },
     [state, save]
   );
 
-  const addGroupExpense = useCallback(
-    async (expense: Omit<GroupExpense, "id" | "date">) => {
-      const newExpense: GroupExpense = {
-        ...expense,
-        id: generateId(),
-        date: new Date().toISOString(),
-      };
-      const next = {
-        ...state,
-        groupExpenses: [...state.groupExpenses, newExpense],
-      };
-      await save(next);
+  const addBill = useCallback(
+    async (bill: Omit<Bill, "id" | "date">) => {
+      const newBill: Bill = { ...bill, id: generateId(), date: new Date().toISOString() };
+      await save({ ...state, bills: [...state.bills, newBill] });
     },
     [state, save]
   );
 
-  const deleteGroupExpense = useCallback(
+  const deleteBill = useCallback(
     async (id: string) => {
-      const next = {
-        ...state,
-        groupExpenses: state.groupExpenses.filter((e) => e.id !== id),
-      };
-      await save(next);
+      await save({ ...state, bills: state.bills.filter((b) => b.id !== id) });
     },
     [state, save]
   );
@@ -197,83 +194,81 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         id: generateId(),
         date: new Date().toISOString(),
       };
-      const next = {
-        ...state,
-        personalExpenses: [...state.personalExpenses, newExpense],
-      };
-      await save(next);
+      await save({ ...state, personalExpenses: [...state.personalExpenses, newExpense] });
     },
     [state, save]
   );
 
   const deletePersonalExpense = useCallback(
     async (id: string) => {
-      const next = {
+      await save({
         ...state,
         personalExpenses: state.personalExpenses.filter((e) => e.id !== id),
-      };
-      await save(next);
+      });
     },
     [state, save]
   );
 
+  const getMemberShare = useCallback(
+    (bill: Bill, memberId: string) => getMemberShareFromBill(bill, memberId),
+    []
+  );
+
+  const getBillTotal = useCallback(
+    (bill: Bill) => getBillTotalAmount(bill),
+    []
+  );
+
   const getGroupBalances = useCallback(
     (groupId: string): BalanceItem[] => {
-      const expenses = state.groupExpenses.filter(
-        (e) => e.groupId === groupId
-      );
-      const balanceMap: Record<string, { memberName: string; amount: number }> =
-        {};
+      const groupBills = state.bills.filter((b) => b.groupId === groupId);
+      const group = state.groups.find((g) => g.id === groupId);
+      const balanceMap: Record<string, { memberName: string; amount: number }> = {};
 
-      for (const expense of expenses) {
-        if (expense.paidById === state.userId) {
-          for (const split of expense.splits) {
-            if (split.memberId !== state.userId) {
-              if (!balanceMap[split.memberId]) {
-                balanceMap[split.memberId] = {
-                  memberName: split.memberName,
-                  amount: 0,
-                };
+      for (const bill of groupBills) {
+        if (bill.paidById === state.userId) {
+          // I paid — track what each other member owes me per item
+          for (const item of bill.items) {
+            if (item.splitMemberIds.length === 0) continue;
+            const share = item.amount / item.splitMemberIds.length;
+            for (const mId of item.splitMemberIds) {
+              if (mId === state.userId) continue;
+              const memberName =
+                group?.members.find((m) => m.id === mId)?.name ?? mId;
+              if (!balanceMap[mId]) {
+                balanceMap[mId] = { memberName, amount: 0 };
               }
-              balanceMap[split.memberId].amount += split.amount;
+              balanceMap[mId].amount += share;
             }
           }
         } else {
-          const mySpend = expense.splits.find(
-            (s) => s.memberId === state.userId
-          );
-          if (mySpend) {
-            if (!balanceMap[expense.paidById]) {
-              balanceMap[expense.paidById] = {
-                memberName: expense.paidByName,
-                amount: 0,
-              };
+          // Someone else paid — I owe them my share
+          const myShare = getMemberShareFromBill(bill, state.userId);
+          if (myShare > 0) {
+            if (!balanceMap[bill.paidById]) {
+              balanceMap[bill.paidById] = { memberName: bill.paidByName, amount: 0 };
             }
-            balanceMap[expense.paidById].amount -= mySpend.amount;
+            balanceMap[bill.paidById].amount -= myShare;
           }
         }
       }
 
-      return Object.entries(balanceMap).map(
-        ([memberId, { memberName, amount }]) => ({
-          memberId,
-          memberName,
-          amount,
-        })
-      );
+      return Object.entries(balanceMap).map(([memberId, { memberName, amount }]) => ({
+        memberId,
+        memberName,
+        amount: parseFloat(amount.toFixed(2)),
+      }));
     },
-    [state.groupExpenses, state.userId]
+    [state.bills, state.groups, state.userId]
   );
 
   const getTotalBalance = useCallback((): number => {
     let total = 0;
     for (const group of state.groups) {
       const balances = getGroupBalances(group.id);
-      for (const b of balances) {
-        total += b.amount;
-      }
+      for (const b of balances) total += b.amount;
     }
-    return total;
+    return parseFloat(total.toFixed(2));
   }, [state.groups, getGroupBalances]);
 
   if (!loaded) return null;
@@ -286,10 +281,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setCurrency,
         createGroup,
         deleteGroup,
-        addGroupExpense,
-        deleteGroupExpense,
+        addBill,
+        deleteBill,
         addPersonalExpense,
         deletePersonalExpense,
+        getMemberShare,
+        getBillTotal,
         getGroupBalances,
         getTotalBalance,
       }}

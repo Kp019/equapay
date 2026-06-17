@@ -37,7 +37,7 @@ function RootLayoutNav() {
         }}
       />
       <Stack.Screen
-        name="add-group-expense"
+        name="add-bill"
         options={{
           presentation: "modal",
           headerShown: false,

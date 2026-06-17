@@ -13,54 +13,53 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { GroupExpense, useApp } from "@/context/AppContext";
+import { Bill, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { formatCurrency, formatDate } from "@/utils/format";
 
-const CATEGORY_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
-  food: "coffee",
-  transport: "navigation",
-  shopping: "shopping-bag",
-  entertainment: "film",
-  health: "heart",
-  housing: "home",
-  utilities: "zap",
-  other: "more-horizontal",
-};
-
-const CATEGORY_COLORS: Record<string, string> = {
-  food: "#F97316",
-  transport: "#3B82F6",
-  shopping: "#8B5CF6",
-  entertainment: "#EC4899",
-  health: "#EF4444",
-  housing: "#10B981",
-  utilities: "#F59E0B",
-  other: "#6B7280",
-};
-
-// ─── Bill Card ────────────────────────────────────────────────────────────────
+// ─── Bill card ────────────────────────────────────────────────────────────────
 function BillCard({
-  expense,
+  bill,
+  groupMembers,
   userId,
   currency,
   colors,
   onDelete,
 }: {
-  expense: GroupExpense;
+  bill: Bill;
+  groupMembers: { id: string; name: string }[];
   userId: string;
   currency: string;
   colors: ReturnType<typeof import("@/hooks/useColors").useColors>;
   onDelete: () => void;
 }) {
-  const iPaid = expense.paidById === userId;
-  const mySpend = expense.splits.find((s) => s.memberId === userId);
-  const catColor = CATEGORY_COLORS[expense.category] ?? colors.accent;
-  const catIcon = CATEGORY_ICONS[expense.category] ?? "more-horizontal";
+  const iPaid = bill.paidById === userId;
+  const billTotal = bill.items.reduce((s, i) => s + i.amount, 0);
 
-  const myNet = iPaid
-    ? expense.amount - (mySpend?.amount ?? 0)   // positive → others owe me
-    : -(mySpend?.amount ?? 0);                   // negative → I owe payer
+  // Per-member total share across all items
+  const memberShares = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of bill.items) {
+      if (item.splitMemberIds.length === 0) continue;
+      const share = item.amount / item.splitMemberIds.length;
+      for (const mId of item.splitMemberIds) {
+        map[mId] = (map[mId] ?? 0) + share;
+      }
+    }
+    return map;
+  }, [bill.items]);
+
+  const myShare = memberShares[userId] ?? 0;
+  const myNet = iPaid ? billTotal - myShare : -myShare;
+
+  // Members who appear in this bill
+  const involvedMemberIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of bill.items) {
+      for (const mId of item.splitMemberIds) ids.add(mId);
+    }
+    return ids;
+  }, [bill.items]);
 
   return (
     <TouchableOpacity
@@ -68,135 +67,162 @@ function BillCard({
       activeOpacity={0.88}
       style={[styles.billCard, { backgroundColor: colors.card, borderColor: colors.border }]}
     >
-      {/* ── Top row: icon / title / total ── */}
-      <View style={styles.billTop}>
-        <View style={[styles.catBadge, { backgroundColor: catColor + "18" }]}>
-          <Feather name={catIcon} size={16} color={catColor} />
+      {/* ── Header ── */}
+      <View style={styles.billHeader}>
+        <View style={[styles.billIconWrap, { backgroundColor: colors.primary + "18" }]}>
+          <Feather name="file-text" size={16} color={colors.primary} />
         </View>
-        <View style={styles.billTitleBlock}>
+        <View style={styles.billHeaderText}>
           <Text style={[styles.billTitle, { color: colors.foreground }]} numberOfLines={1}>
-            {expense.title}
+            {bill.title}
           </Text>
-          <Text style={[styles.billMeta, { color: colors.mutedForeground }]}>
-            {formatDate(expense.date)}
+          <Text style={[styles.billDate, { color: colors.mutedForeground }]}>
+            {formatDate(bill.date)}
           </Text>
         </View>
-        <Text style={[styles.billTotal, { color: colors.foreground }]}>
-          {formatCurrency(expense.amount, currency)}
+        <View style={{ alignItems: "flex-end" }}>
+          <Text style={[styles.billTotal, { color: colors.foreground }]}>
+            {formatCurrency(billTotal, currency)}
+          </Text>
+          <View style={[styles.paidPill, { backgroundColor: iPaid ? colors.primary + "18" : colors.muted }]}>
+            <Text style={[styles.paidPillText, { color: iPaid ? colors.primary : colors.mutedForeground }]}>
+              {iPaid ? "you paid" : `${bill.paidByName} paid`}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* ── Items ── */}
+      <View style={[styles.itemsSection, { borderTopColor: colors.border }]}>
+        <Text style={[styles.itemsSectionLabel, { color: colors.mutedForeground }]}>
+          {bill.items.length} {bill.items.length === 1 ? "ITEM" : "ITEMS"}
         </Text>
-      </View>
+        {bill.items.map((item, i) => {
+          const perPerson =
+            item.splitMemberIds.length > 0
+              ? item.amount / item.splitMemberIds.length
+              : 0;
+          // Names of people sharing this item
+          const sharerNames = item.splitMemberIds.map((mId) => {
+            if (mId === userId) return "You";
+            return groupMembers.find((m) => m.id === mId)?.name ?? "?";
+          });
 
-      {/* ── Paid-by pill ── */}
-      <View style={styles.paidByRow}>
-        <View style={[styles.paidByPill, { backgroundColor: iPaid ? colors.primary + "15" : colors.muted }]}>
-          <Feather
-            name="credit-card"
-            size={11}
-            color={iPaid ? colors.primary : colors.mutedForeground}
-          />
-          <Text
-            style={[
-              styles.paidByText,
-              { color: iPaid ? colors.primary : colors.mutedForeground },
-            ]}
-          >
-            {iPaid ? "You paid" : `${expense.paidByName} paid`}
-          </Text>
-        </View>
-      </View>
-
-      {/* ── Divider ── */}
-      <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-      {/* ── Split rows ── */}
-      <View style={styles.splitsBlock}>
-        {expense.splits.map((split, i) => {
-          const isMe = split.memberId === userId;
-          const isPayer = split.memberId === expense.paidById;
           return (
             <View
-              key={split.memberId}
+              key={item.id}
               style={[
-                styles.splitRow,
-                isMe && { backgroundColor: colors.primary + "08" },
-                i < expense.splits.length - 1 && styles.splitRowBorder,
-                i < expense.splits.length - 1 && { borderBottomColor: colors.border },
+                styles.itemRow,
+                i < bill.items.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
               ]}
             >
-              {/* Avatar */}
-              <View
-                style={[
-                  styles.splitAvatar,
-                  {
-                    backgroundColor: isMe
-                      ? colors.primary + "22"
-                      : colors.accent + "18",
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.splitAvatarText,
-                    { color: isMe ? colors.primary : colors.accent },
-                  ]}
-                >
-                  {(isMe ? "Y" : split.memberName.charAt(0)).toUpperCase()}
-                </Text>
-              </View>
-
-              {/* Name */}
-              <Text
-                style={[
-                  styles.splitName,
-                  {
-                    color: isMe ? colors.primary : colors.foreground,
-                    fontFamily: isMe ? "Inter_600SemiBold" : "Inter_400Regular",
-                  },
-                ]}
-              >
-                {isMe ? "You" : split.memberName}
-              </Text>
-
-              {/* Payer badge */}
-              {isPayer && (
-                <View style={[styles.payerBadge, { backgroundColor: colors.primary + "18" }]}>
-                  <Text style={[styles.payerBadgeText, { color: colors.primary }]}>paid</Text>
+              <View style={styles.itemRowLeft}>
+                <View style={[styles.itemDot, { backgroundColor: colors.accent + "25" }]}>
+                  <Feather name="tag" size={10} color={colors.accent} />
                 </View>
-              )}
-
-              {/* Amount */}
-              <Text
-                style={[
-                  styles.splitAmount,
-                  { color: isMe && !isPayer ? colors.negative : colors.foreground },
-                ]}
-              >
-                {formatCurrency(split.amount, currency)}
+                <View style={styles.itemRowText}>
+                  <Text style={[styles.itemName, { color: colors.foreground }]}>
+                    {item.name}
+                  </Text>
+                  <Text style={[styles.itemSharers, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    {sharerNames.join(", ")} · {formatCurrency(perPerson, currency)} each
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.itemAmount, { color: colors.foreground }]}>
+                {formatCurrency(item.amount, currency)}
               </Text>
             </View>
           );
         })}
       </View>
 
-      {/* ── Your net summary ── */}
-      {mySpend !== undefined && (
-        <>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <View style={[styles.netRow, { backgroundColor: myNet >= 0 ? colors.positive + "0C" : colors.negative + "0C" }]}>
-            <Feather
-              name={myNet >= 0 ? "arrow-down-left" : "arrow-up-right"}
-              size={13}
-              color={myNet >= 0 ? colors.positive : colors.negative}
-            />
-            <Text style={[styles.netText, { color: myNet >= 0 ? colors.positive : colors.negative }]}>
-              {myNet === 0
-                ? "You're settled on this bill"
-                : myNet > 0
-                ? `You get back ${formatCurrency(myNet, currency)}`
-                : `You owe ${formatCurrency(Math.abs(myNet), currency)}`}
-            </Text>
-          </View>
-        </>
+      {/* ── Per-person breakdown ── */}
+      {involvedMemberIds.size > 0 && (
+        <View style={[styles.breakdownSection, { borderTopColor: colors.border }]}>
+          <Text style={[styles.breakdownLabel, { color: colors.mutedForeground }]}>
+            PER PERSON
+          </Text>
+          {Array.from(involvedMemberIds).map((mId) => {
+            const isMe = mId === userId;
+            const isPayer = mId === bill.paidById;
+            const name = isMe
+              ? "You"
+              : groupMembers.find((m) => m.id === mId)?.name ?? "?";
+            const share = memberShares[mId] ?? 0;
+
+            return (
+              <View
+                key={mId}
+                style={[
+                  styles.breakdownRow,
+                  isMe && { backgroundColor: colors.primary + "08" },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.breakdownAvatar,
+                    { backgroundColor: isMe ? colors.primary + "22" : colors.accent + "18" },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.breakdownAvatarText,
+                      { color: isMe ? colors.primary : colors.accent },
+                    ]}
+                  >
+                    {(isMe ? "Y" : name.charAt(0)).toUpperCase()}
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.breakdownName,
+                    {
+                      color: isMe ? colors.primary : colors.foreground,
+                      fontFamily: isMe ? "Inter_600SemiBold" : "Inter_400Regular",
+                    },
+                  ]}
+                >
+                  {name}
+                </Text>
+                {isPayer && (
+                  <View style={[styles.payerBadge, { backgroundColor: colors.primary + "18" }]}>
+                    <Text style={[styles.payerBadgeText, { color: colors.primary }]}>paid</Text>
+                  </View>
+                )}
+                <Text style={[styles.breakdownShare, { color: colors.foreground }]}>
+                  {formatCurrency(share, currency)}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {/* ── My net ── */}
+      {involvedMemberIds.has(userId) && (
+        <View
+          style={[
+            styles.netBar,
+            {
+              backgroundColor: myNet >= 0 ? colors.positive + "0D" : colors.negative + "0D",
+              borderTopColor: colors.border,
+            },
+          ]}
+        >
+          <Feather
+            name={myNet > 0 ? "arrow-down-left" : myNet < 0 ? "arrow-up-right" : "check-circle"}
+            size={13}
+            color={myNet >= 0 ? colors.positive : colors.negative}
+          />
+          <Text style={[styles.netText, { color: myNet >= 0 ? colors.positive : colors.negative }]}>
+            {myNet === 0
+              ? "You're settled on this bill"
+              : myNet > 0
+              ? `You get back ${formatCurrency(myNet, currency)}`
+              : `You owe ${formatCurrency(Math.abs(myNet), currency)}`}
+          </Text>
+        </View>
       )}
     </TouchableOpacity>
   );
@@ -208,16 +234,16 @@ export default function GroupDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { groups, groupExpenses, currency, userId, deleteGroupExpense, getGroupBalances } =
-    useApp();
+  const { groups, bills, currency, userId, deleteBill, getGroupBalances } = useApp();
 
   const group = groups.find((g) => g.id === id);
-  const expenses = useMemo(
+
+  const groupBills = useMemo(
     () =>
-      [...groupExpenses.filter((e) => e.groupId === id)].sort(
+      [...bills.filter((b) => b.groupId === id)].sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
       ),
-    [groupExpenses, id]
+    [bills, id]
   );
 
   const balances = useMemo(
@@ -226,8 +252,8 @@ export default function GroupDetailScreen() {
   );
 
   const totalSpent = useMemo(
-    () => expenses.reduce((sum, e) => sum + e.amount, 0),
-    [expenses]
+    () => groupBills.reduce((s, b) => s + b.items.reduce((si, i) => si + i.amount, 0), 0),
+    [groupBills]
   );
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -240,15 +266,15 @@ export default function GroupDetailScreen() {
     );
   }
 
-  function handleDeleteExpense(expId: string, title: string) {
+  function handleDeleteBill(billId: string, title: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(`Delete "${title}"?`, undefined, [
+    Alert.alert(`Delete "${title}"?`, "This will remove the bill and all its items.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteGroupExpense(expId) },
+      { text: "Delete", style: "destructive", onPress: () => deleteBill(billId) },
     ]);
   }
 
-  const netBalance = balances.reduce((sum, b) => sum + b.amount, 0);
+  const netBalance = balances.reduce((s, b) => s + b.amount, 0);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -277,7 +303,7 @@ export default function GroupDetailScreen() {
           <TouchableOpacity
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push({ pathname: "/add-group-expense", params: { groupId: id } });
+              router.push({ pathname: "/add-bill", params: { groupId: id } });
             }}
             style={[styles.addBtn, { backgroundColor: colors.primary }]}
             activeOpacity={0.8}
@@ -286,7 +312,7 @@ export default function GroupDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Summary Row */}
+        {/* Summary */}
         <View style={styles.summaryRow}>
           <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Total Spent</Text>
@@ -331,12 +357,7 @@ export default function GroupDetailScreen() {
                     { backgroundColor: m.id === userId ? colors.primary + "25" : colors.accent + "20" },
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.memberAvatarText,
-                      { color: m.id === userId ? colors.primary : colors.accent },
-                    ]}
-                  >
+                  <Text style={[styles.memberAvatarText, { color: m.id === userId ? colors.primary : colors.accent }]}>
                     {m.name.charAt(0).toUpperCase()}
                   </Text>
                 </View>
@@ -357,15 +378,13 @@ export default function GroupDetailScreen() {
                 <View key={b.memberId}>
                   {i > 0 && <View style={[styles.divider, { backgroundColor: colors.border }]} />}
                   <View style={styles.balanceRow}>
-                    <View style={[styles.memberAvatarSm, { backgroundColor: colors.accent + "20" }]}>
-                      <Text style={[styles.memberAvatarTextSm, { color: colors.accent }]}>
+                    <View style={[styles.balanceAvatar, { backgroundColor: colors.accent + "20" }]}>
+                      <Text style={[styles.balanceAvatarText, { color: colors.accent }]}>
                         {b.memberName.charAt(0).toUpperCase()}
                       </Text>
                     </View>
                     <View style={styles.balanceInfo}>
-                      <Text style={[styles.balanceName, { color: colors.foreground }]}>
-                        {b.memberName}
-                      </Text>
+                      <Text style={[styles.balanceName, { color: colors.foreground }]}>{b.memberName}</Text>
                       <Text style={[styles.balanceDesc, { color: b.amount > 0 ? colors.positive : colors.negative }]}>
                         {b.amount > 0
                           ? `owes you ${formatCurrency(b.amount, currency)}`
@@ -386,31 +405,31 @@ export default function GroupDetailScreen() {
         {/* Bills */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              Bills
-            </Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Bills</Text>
             <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>
-              {expenses.length}
+              {groupBills.length}
             </Text>
           </View>
 
-          {expenses.length === 0 ? (
+          {groupBills.length === 0 ? (
             <View style={styles.emptyState}>
-              <Feather name="file-text" size={32} color={colors.mutedForeground} />
+              <Feather name="file-text" size={36} color={colors.mutedForeground} />
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No bills yet</Text>
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                No bills yet. Tap + to add one.
+                Tap + to add a bill and split it among members.
               </Text>
             </View>
           ) : (
-            <View style={{ gap: 12 }}>
-              {expenses.map((e) => (
+            <View style={{ gap: 14 }}>
+              {groupBills.map((b) => (
                 <BillCard
-                  key={e.id}
-                  expense={e}
+                  key={b.id}
+                  bill={b}
+                  groupMembers={group.members}
                   userId={userId}
                   currency={currency}
                   colors={colors}
-                  onDelete={() => handleDeleteExpense(e.id, e.title)}
+                  onDelete={() => handleDeleteBill(b.id, b.title)}
                 />
               ))}
             </View>
@@ -423,25 +442,12 @@ export default function GroupDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    gap: 12,
-  },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    alignItems: "center", justifyContent: "center", borderWidth: 1,
-  },
+  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, marginBottom: 16, gap: 12 },
+  backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   headerTitleBlock: { flex: 1 },
   groupName: { fontSize: 20, fontFamily: "Inter_700Bold" },
   groupMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  addBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    alignItems: "center", justifyContent: "center",
-  },
+  addBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
 
   summaryRow: { flexDirection: "row", paddingHorizontal: 16, gap: 10, marginBottom: 20 },
   summaryCard: { flex: 1, borderRadius: 14, padding: 14, borderWidth: 1 },
@@ -453,87 +459,59 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.5 },
   sectionCount: { fontSize: 13, fontFamily: "Inter_400Regular" },
 
-  memberChip: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    borderRadius: 40, paddingRight: 14, paddingLeft: 6, paddingVertical: 6, borderWidth: 1,
-  },
+  memberChip: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 40, paddingRight: 14, paddingLeft: 6, paddingVertical: 6, borderWidth: 1 },
   memberAvatar: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   memberAvatarText: { fontSize: 14, fontFamily: "Inter_700Bold" },
   memberName: { fontSize: 13, fontFamily: "Inter_500Medium" },
 
   card: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
   divider: { height: 1 },
-
   balanceRow: { flexDirection: "row", alignItems: "center", padding: 14, gap: 12 },
-  memberAvatarSm: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  memberAvatarTextSm: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  balanceAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  balanceAvatarText: { fontSize: 14, fontFamily: "Inter_700Bold" },
   balanceInfo: { flex: 1 },
   balanceName: { fontSize: 14, fontFamily: "Inter_500Medium" },
   balanceDesc: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   balanceAmount: { fontSize: 15, fontFamily: "Inter_700Bold" },
 
-  emptyState: { alignItems: "center", gap: 10, paddingVertical: 30 },
-  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
+  emptyState: { alignItems: "center", gap: 8, paddingVertical: 40 },
+  emptyTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  emptyText: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center" },
 
-  // ── Bill card ──
-  billCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  billTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 14,
-  },
-  catBadge: {
-    width: 40, height: 40, borderRadius: 20,
-    alignItems: "center", justifyContent: "center",
-  },
-  billTitleBlock: { flex: 1 },
-  billTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  billMeta: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
-  billTotal: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  // Bill card
+  billCard: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
+  billHeader: { flexDirection: "row", alignItems: "flex-start", padding: 14, gap: 12 },
+  billIconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  billHeaderText: { flex: 1 },
+  billTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  billDate: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  billTotal: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  paidPill: { marginTop: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, alignSelf: "flex-end" },
+  paidPillText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
 
-  paidByRow: { paddingHorizontal: 14, paddingBottom: 12 },
-  paidByPill: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    alignSelf: "flex-start",
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 20,
-  },
-  paidByText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  // Items section
+  itemsSection: { borderTopWidth: 1, paddingTop: 10, paddingBottom: 4, paddingHorizontal: 14 },
+  itemsSectionLabel: { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8, marginBottom: 6 },
+  itemRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 9 },
+  itemRowLeft: { flexDirection: "row", alignItems: "flex-start", gap: 8, flex: 1 },
+  itemDot: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", marginTop: 1 },
+  itemRowText: { flex: 1 },
+  itemName: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  itemSharers: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
+  itemAmount: { fontSize: 13, fontFamily: "Inter_700Bold", marginLeft: 8 },
 
-  // Split rows
-  splitsBlock: {},
-  splitRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    gap: 10,
-  },
-  splitRowBorder: { borderBottomWidth: 1 },
-  splitAvatar: {
-    width: 30, height: 30, borderRadius: 15,
-    alignItems: "center", justifyContent: "center",
-  },
-  splitAvatarText: { fontSize: 12, fontFamily: "Inter_700Bold" },
-  splitName: { flex: 1, fontSize: 13 },
-  payerBadge: {
-    paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6,
-  },
+  // Per-person breakdown
+  breakdownSection: { borderTopWidth: 1, paddingTop: 10, paddingBottom: 6 },
+  breakdownLabel: { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8, paddingHorizontal: 14, marginBottom: 2 },
+  breakdownRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, gap: 10 },
+  breakdownAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  breakdownAvatarText: { fontSize: 11, fontFamily: "Inter_700Bold" },
+  breakdownName: { flex: 1, fontSize: 13 },
+  payerBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
   payerBadgeText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
-  splitAmount: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  breakdownShare: { fontSize: 14, fontFamily: "Inter_700Bold" },
 
-  // Net summary bar
-  netRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
+  // Net bar
+  netBar: { flexDirection: "row", alignItems: "center", gap: 6, padding: 12, borderTopWidth: 1 },
   netText: { fontSize: 12, fontFamily: "Inter_500Medium" },
 });
