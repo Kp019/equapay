@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, timestamp, jsonb, unique } from "drizzle-orm/pg-core";
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 export const users = pgTable("users", {
@@ -35,7 +35,7 @@ export const groupMembers = pgTable("group_members", {
   userId: uuid("user_id")
     .references(() => users.id)
     .notNull(),
-});
+}, (t) => [unique("group_members_group_user_unique").on(t.groupId, t.userId)]);
 
 // ─── Bills ────────────────────────────────────────────────────────────────────
 export type BillItemData = {

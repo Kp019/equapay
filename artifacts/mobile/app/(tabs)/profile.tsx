@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import React from "react";
 import {
   Alert,
@@ -21,6 +22,7 @@ const CURRENCIES = ["USD", "EUR", "GBP", "INR", "CAD", "AUD", "JPY", "SGD"];
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { user, logout } = useAuth();
   const { currency, setCurrency, groups, bills, personalExpenses } = useApp();
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -34,8 +36,9 @@ export default function ProfileScreen() {
         text: "Sign Out",
         style: "destructive",
         onPress: async () => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
           await logout();
+          router.replace("/auth");
         },
       },
     ]);
