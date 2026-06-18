@@ -77,6 +77,7 @@ interface AppContextValue {
   deleteBill: (id: string) => Promise<void>;
   joinGroupByCode: (code: string) => Promise<Group>;
   getInviteCode: (groupId: string) => Promise<string>;
+  addMemberToGroup: (groupId: string, userId: string) => Promise<Group>;
   addPersonalExpense: (expense: Omit<PersonalExpense, "id" | "date">) => Promise<void>;
   deletePersonalExpense: (id: string) => Promise<void>;
   getGroupBalances: (groupId: string) => BalanceItem[];
@@ -223,6 +224,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [apiRequest]
   );
 
+  const addMemberToGroup = useCallback(
+    async (groupId: string, targetUserId: string): Promise<Group> => {
+      const { group } = await apiRequest<{ group: Group }>(`/groups/${groupId}/members`, {
+        method: "POST",
+        body: JSON.stringify({ userId: targetUserId }),
+      });
+      setGroups((prev) => prev.map((g) => (g.id === groupId ? group : g)));
+      return group;
+    },
+    [apiRequest]
+  );
+
   const joinGroupByCode = useCallback(
     async (code: string): Promise<Group> => {
       const { group } = await apiRequest<{ group: Group }>(`/invites/${code}/join`, {
@@ -338,6 +351,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deleteBill,
         joinGroupByCode,
         getInviteCode,
+        addMemberToGroup,
         addPersonalExpense,
         deletePersonalExpense,
         getGroupBalances,

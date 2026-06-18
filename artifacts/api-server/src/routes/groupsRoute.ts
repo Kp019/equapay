@@ -108,6 +108,52 @@ router.delete("/groups/:id", requireAuth, async (req, res) => {
   }
 });
 
+// POST /groups/:id/members — add a member by userId
+router.post("/groups/:id/members", requireAuth, async (req, res) => {
+  const groupId = req.params.id as string;
+  const { userId: targetUserId } = req.body as { userId?: string };
+
+  if (!targetUserId) {
+    res.status(400).json({ error: "userId is required" });
+    return;
+  }
+
+  try {
+    const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+    if (!group) { res.status(404).json({ error: "Group not found" }); return; }
+
+    const [targetUser] = await db
+      .select({ id: users.id, displayName: users.displayName })
+      .from(users)
+      .where(eq(users.id, targetUserId))
+      .limit(1);
+    if (!targetUser) { res.status(404).json({ error: "User not found" }); return; }
+
+    const members = group.members as { id: string; name: string; userId?: string }[];
+    if (members.find((m) => m.id === targetUserId)) {
+      res.json({ group });
+      return;
+    }
+
+    const newMembers = [...members, { id: targetUser.id, name: targetUser.displayName, userId: targetUser.id }];
+    const [updated] = await db
+      .update(groups)
+      .set({ members: newMembers })
+      .where(eq(groups.id, groupId))
+      .returning();
+
+    await db
+      .insert(groupMembers)
+      .values({ groupId, userId: targetUserId })
+      .onConflictDoNothing();
+
+    res.json({ group: updated });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // ─── Bills ────────────────────────────────────────────────────────────────────
 
 // GET /groups/:id/bills

@@ -169,6 +169,7 @@ export default function GroupDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { groups, bills, currency, userId, deleteBill, getGroupBalances, refreshBills, getInviteCode } = useApp();
+  // kept for backwards compat — invite sharing in header still works
   const [inviteLoading, setInviteLoading] = useState(false);
 
   const group = groups.find((g) => g.id === id);
@@ -267,7 +268,17 @@ export default function GroupDetailScreen() {
 
         {/* Members */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Members</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Members</Text>
+            <TouchableOpacity
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/add-member", params: { groupId: id } }); }}
+              style={[styles.addMemberBtn, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
+              activeOpacity={0.7}
+            >
+              <Feather name="user-plus" size={13} color={colors.primary} />
+              <Text style={[styles.addMemberBtnText, { color: colors.primary }]}>Add</Text>
+            </TouchableOpacity>
+          </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
             {group.members.map((m) => (
               <View key={m.id} style={[styles.memberChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -360,6 +371,8 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
   sectionTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.5 },
   sectionCount: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  addMemberBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  addMemberBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   memberChip: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 40, paddingRight: 14, paddingLeft: 6, paddingVertical: 6, borderWidth: 1 },
   memberAvatar: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   memberAvatarText: { fontSize: 14, fontFamily: "Inter_700Bold" },

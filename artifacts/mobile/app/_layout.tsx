@@ -65,6 +65,10 @@ function RootLayoutNav() {
           name="add-personal-expense"
           options={{ presentation: "modal", headerShown: false, animation: "slide_from_bottom" }}
         />
+        <Stack.Screen
+          name="add-member"
+          options={{ presentation: "modal", headerShown: false, animation: "slide_from_bottom" }}
+        />
       </Stack>
     </AuthGate>
   );
