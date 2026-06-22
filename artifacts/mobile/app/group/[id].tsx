@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -15,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Bill, useApp } from "@/context/AppContext";
+import { useUI } from "@/context/UIContext";
 import { useColors } from "@/hooks/useColors";
 import { formatCurrency, formatDate } from "@/utils/format";
 
@@ -26,6 +28,7 @@ function BillCard({
   currency,
   colors,
   onDelete,
+  onEdit,
 }: {
   bill: Bill;
   groupMembers: { id: string; name: string }[];
@@ -33,6 +36,7 @@ function BillCard({
   currency: string;
   colors: ReturnType<typeof import("@/hooks/useColors").useColors>;
   onDelete: () => void;
+  onEdit?: () => void;
 }) {
   const iPaid = bill.paidById === userId;
   const billTotal = bill.items.reduce((s, i) => s + i.amount, 0);
@@ -76,7 +80,14 @@ function BillCard({
           <Text style={[styles.billDate, { color: colors.mutedForeground }]}>{formatDate(bill.date)}</Text>
         </View>
         <View style={{ alignItems: "flex-end" }}>
-          <Text style={[styles.billTotal, { color: colors.foreground }]}>{formatCurrency(billTotal, currency)}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            {onEdit && (
+              <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Feather name="edit-2" size={14} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            )}
+            <Text style={[styles.billTotal, { color: colors.foreground }]}>{formatCurrency(billTotal, currency)}</Text>
+          </View>
           <View style={[styles.paidPill, { backgroundColor: iPaid ? colors.primary + "18" : colors.muted }]}>
             <Text style={[styles.paidPillText, { color: iPaid ? colors.primary : colors.mutedForeground }]}>
               {iPaid ? "you paid" : `${bill.paidByName} paid`}
@@ -169,6 +180,7 @@ export default function GroupDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { groups, bills, currency, userId, deleteBill, getGroupBalances, refreshBills, getInviteCode } = useApp();
+  const { confirm, showToast, showShare } = useUI();
   // kept for backwards compat — invite sharing in header still works
   const [inviteLoading, setInviteLoading] = useState(false);
 
@@ -197,27 +209,33 @@ export default function GroupDetailScreen() {
     );
   }
 
+
+
   async function handleInvite() {
     setInviteLoading(true);
     try {
       const code = await getInviteCode(id!);
-      await Share.share({
-        message: `Join my group "${group!.name}" on SplitWise!\n\nInvite code: ${code}\n\nOpen the app → Groups → Join Group, and enter the code.`,
+      await Clipboard.setStringAsync(code);
+      showShare({
         title: `Join ${group!.name}`,
+        message: `Join my group "${group!.name}" on EquaPay!`,
+        code: code,
       });
     } catch (e: any) {
-      Alert.alert("Error", e.message ?? "Could not generate invite link.");
+      showToast({ title: "Error", message: e.message ?? "Could not generate invite link.", type: "error" });
     } finally {
       setInviteLoading(false);
     }
   }
 
   function handleDeleteBill(billId: string, title: string) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(`Delete "${title}"?`, "This will remove the bill and all its items.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteBill(billId) },
-    ]);
+    confirm({
+      title: `Delete "${title}"?`,
+      message: "This will remove the bill and all its items.",
+      confirmText: "Delete",
+      destructive: true,
+      onConfirm: () => deleteBill(billId),
+    });
   }
 
   return (
@@ -344,6 +362,7 @@ export default function GroupDetailScreen() {
                   currency={currency}
                   colors={colors}
                   onDelete={() => handleDeleteBill(b.id, b.title)}
+                  onEdit={() => router.push({ pathname: "/add-bill", params: { groupId: id, editBillId: b.id } })}
                 />
               ))}
             </View>

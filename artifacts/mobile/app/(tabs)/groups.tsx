@@ -3,7 +3,6 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
 import {
-  Alert,
   Platform,
   RefreshControl,
   ScrollView,
@@ -15,6 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
+import { useUI } from "@/context/UIContext";
 import { useColors } from "@/hooks/useColors";
 import { formatCurrency } from "@/utils/format";
 
@@ -23,6 +23,7 @@ export default function GroupsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { groups, bills, currency, deleteGroup, getGroupBalances, loadingGroups, refreshGroups } = useApp();
+  const { confirm } = useUI();
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
   const groupsWithStats = useMemo(() => {
@@ -36,11 +37,13 @@ export default function GroupsScreen() {
   }, [groups, bills, getGroupBalances]);
 
   function handleDelete(id: string, name: string) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(`Delete "${name}"?`, "All bills in this group will be removed.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteGroup(id) },
-    ]);
+    confirm({
+      title: `Delete "${name}"?`,
+      message: "All bills in this group will be removed.",
+      confirmText: "Delete",
+      destructive: true,
+      onConfirm: () => deleteGroup(id),
+    });
   }
 
   return (

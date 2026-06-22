@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
+import { useUI } from "@/context/UIContext";
 import { useColors } from "@/hooks/useColors";
 
 interface UserResult {
@@ -35,6 +36,7 @@ export default function AddMemberScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const { groups, addMemberToGroup, getInviteCode } = useApp();
   const { user, apiRequest } = useAuth();
+  const { showToast, showShare } = useUI();
 
   const group = groups.find((g) => g.id === groupId);
 
@@ -92,7 +94,7 @@ export default function AddMemberScreen() {
       setSearchResults((prev) => prev.filter((r) => r.id !== u.id));
     } catch (e: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Error", e.message ?? "Could not add member.");
+      showToast({ title: "Error", message: e.message ?? "Could not add member.", type: "error" });
     } finally {
       setAddingId(null);
     }
@@ -105,7 +107,7 @@ export default function AddMemberScreen() {
       const code = await getInviteCode(groupId);
       setInviteCode(code);
     } catch (e: any) {
-      Alert.alert("Error", e.message ?? "Could not generate code.");
+      showToast({ title: "Error", message: e.message ?? "Could not generate code.", type: "error" });
     } finally {
       setCodeLoading(false);
     }
@@ -122,11 +124,12 @@ export default function AddMemberScreen() {
   async function handleShare() {
     if (!inviteCode || !group) return;
     try {
-      await Share.share({
-        message: `Join my group "${group.name}" on SplitWise!\n\nInvite code: ${inviteCode}\n\nOpen Groups → Join Group, and enter the code.`,
+      showShare({
         title: `Join ${group.name}`,
+        message: `Join my group "${group.name}" on EquaPay!`,
+        code: inviteCode,
       });
-    } catch {}
+    } catch (err: any) {}
   }
 
   function handleTabChange(t: "search" | "code") {

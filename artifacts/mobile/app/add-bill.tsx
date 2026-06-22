@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BillItem, useApp } from "@/context/AppContext";
+import { useUI } from "@/context/UIContext";
 import { useColors } from "@/hooks/useColors";
 import { formatCurrency } from "@/utils/format";
 
@@ -43,19 +44,29 @@ export default function AddBillScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { groupId } = useLocalSearchParams<{ groupId: string }>();
-  const { groups, userId, addBill } = useApp();
+  const { groupId, editBillId } = useLocalSearchParams<{ groupId: string; editBillId?: string }>();
+  const { groups, bills, userId, addBill, editBill } = useApp();
+  const { showToast } = useUI();
   const scrollRef = useRef<ScrollView>(null);
 
   const group = groups.find((g) => g.id === groupId);
   const allMemberIds = group?.members.map((m) => m.id) ?? [];
+  const existingBill = bills.find((b) => b.id === editBillId);
 
-  const [billTitle, setBillTitle] = useState("");
-  const [paidById, setPaidById] = useState(userId);
-  const [items, setItems] = useState<DraftItem[]>([newDraftItem(allMemberIds)]);
-  const [editingId, setEditingId] = useState<string | null>(
-    () => items[0]?.id ?? null
-  );
+  const [billTitle, setBillTitle] = useState(existingBill?.title ?? "");
+  const [paidById, setPaidById] = useState(existingBill?.paidById ?? userId);
+  const [items, setItems] = useState<DraftItem[]>(() => {
+    if (existingBill) {
+      return existingBill.items.map((i) => ({
+        id: i.id,
+        name: i.name,
+        amount: i.amount.toString(),
+        splitMemberIds: new Set(i.splitMemberIds),
+      }));
+    }
+    return [];
+  });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -111,7 +122,7 @@ export default function AddBillScreen() {
   function confirmItem(id: string) {
     const item = items.find((i) => i.id === id);
     if (!item || !item.name.trim() || !parseFloat(item.amount)) {
-      Alert.alert("Incomplete item", "Enter a name and amount for this item.");
+      showToast({ title: "Incomplete item", message: "Enter a name and amount for this item.", type: "error" });
       return;
     }
     Haptics.selectionAsync();
@@ -120,14 +131,14 @@ export default function AddBillScreen() {
 
   async function handleSave() {
     if (!billTitle.trim()) {
-      Alert.alert("Bill name required", "Enter a name for this bill.");
+      showToast({ title: "Bill name required", message: "Enter a name for this bill.", type: "error" });
       return;
     }
     const validItems = items.filter(
       (i) => i.name.trim() && parseFloat(i.amount) > 0
     );
     if (validItems.length === 0) {
-      Alert.alert("Add at least one item", "Enter at least one item with a name and amount.");
+      showToast({ title: "Add at least one item", message: "Enter at least one item with a name and amount.", type: "error" });
       return;
     }
     if (!group) return;
@@ -141,17 +152,26 @@ export default function AddBillScreen() {
 
     setLoading(true);
     try {
-      await addBill({
-        groupId: groupId!,
-        title: billTitle.trim(),
-        paidById,
-        paidByName,
-        items: billItems,
-      });
+      if (editBillId) {
+        await editBill(editBillId, {
+          title: billTitle.trim(),
+          paidById,
+          paidByName,
+          items: billItems,
+        });
+      } else {
+        await addBill({
+          groupId: groupId!,
+          title: billTitle.trim(),
+          paidById,
+          paidByName,
+          items: billItems,
+        });
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch {
-      Alert.alert("Error", "Failed to save bill.");
+      showToast({ title: "Error", message: "Failed to save bill.", type: "error" });
     } finally {
       setLoading(false);
     }
@@ -194,7 +214,7 @@ export default function AddBillScreen() {
           >
             <Feather name="x" size={20} color={colors.foreground} />
           </TouchableOpacity>
-          <Text style={[styles.screenTitle, { color: colors.foreground }]}>New Bill</Text>
+          <Text style={[styles.screenTitle, { color: colors.foreground }]}>{editBillId ? "Edit Bill" : "New Bill"}</Text>
           <View style={{ width: 40 }} />
         </View>
 
@@ -254,7 +274,7 @@ export default function AddBillScreen() {
             {items.map((item, index) => {
               const isEditing = editingId === item.id;
               const itemTotal = parseFloat(item.amount) || 0;
-              const confirmed = item.name.trim() && itemTotal > 0;
+              const confirmed = item.name.trim().length > 0 && itemTotal > 0;
 
               return (
                 <View

@@ -2,7 +2,6 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -15,6 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/AuthContext";
+import { useUI } from "@/context/UIContext";
 import { useColors } from "@/hooks/useColors";
 
 type Mode = "login" | "register";
@@ -23,6 +23,7 @@ export default function AuthScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { login, register } = useAuth();
+  const { showToast } = useUI();
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -36,12 +37,27 @@ export default function AuthScreen() {
     const dn = displayName.trim();
 
     if (!u || !p) {
-      Alert.alert("Missing fields", "Please fill in all fields.");
+      showToast({ title: "Missing fields", message: "Please fill in all fields.", type: "error" });
       return;
     }
     if (mode === "register" && !dn) {
-      Alert.alert("Missing name", "Please enter your display name.");
+      showToast({ title: "Missing name", message: "Please enter your display name.", type: "error" });
       return;
+    }
+
+    if (mode === "register") {
+      if (u.length < 3 || u.length > 50) {
+        showToast({ title: "Invalid username", message: "Username must be 3–50 characters.", type: "error" });
+        return;
+      }
+      if (!/^[a-z0-9_]+$/.test(u)) {
+        showToast({ title: "Invalid username", message: "Username may only contain lowercase letters, numbers, and underscores.", type: "error" });
+        return;
+      }
+      if (p.length < 6) {
+        showToast({ title: "Invalid password", message: "Password must be at least 6 characters.", type: "error" });
+        return;
+      }
     }
 
     setLoading(true);
@@ -54,7 +70,7 @@ export default function AuthScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(mode === "login" ? "Login failed" : "Registration failed", e.message);
+      showToast({ title: mode === "login" ? "Login failed" : "Registration failed", message: e.message, type: "error" });
     } finally {
       setLoading(false);
     }
@@ -78,7 +94,7 @@ export default function AuthScreen() {
           <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
             <Feather name="divide" size={32} color="#fff" />
           </View>
-          <Text style={[styles.appName, { color: colors.foreground }]}>SplitWise</Text>
+          <Text style={[styles.appName, { color: colors.foreground }]}>EquaPay</Text>
           <Text style={[styles.tagline, { color: colors.mutedForeground }]}>
             Split bills. Stay friends.
           </Text>

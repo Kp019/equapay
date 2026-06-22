@@ -7,7 +7,8 @@ import React, {
   useState,
 } from "react";
 
-const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:8080";
+const API_BASE = `http${domain.includes("localhost") ? "" : "s"}://${domain}/api`;
 const TOKEN_KEY = "splitwise_auth_token";
 
 export interface AuthUser {

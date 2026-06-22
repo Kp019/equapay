@@ -199,6 +199,36 @@ router.post("/groups/:id/bills", requireAuth, async (req, res) => {
   }
 });
 
+// PUT /bills/:billId
+router.put("/bills/:billId", requireAuth, async (req, res) => {
+  const billId = req.params.billId as string;
+  const { title, paidById, paidByName, items } = req.body as {
+    title?: string;
+    paidById?: string;
+    paidByName?: string;
+    items?: unknown;
+  };
+
+  if (!title || !paidById || !paidByName || !items) {
+    res.status(400).json({ error: "title, paidById, paidByName, items are required" });
+    return;
+  }
+
+  try {
+    const [bill] = await db
+      .update(bills)
+      .set({ title, paidById, paidByName, items: items as any })
+      .where(eq(bills.id, billId))
+      .returning();
+      
+    if (!bill) { res.status(404).json({ error: "Bill not found" }); return; }
+    res.json({ bill });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // DELETE /bills/:billId
 router.delete("/bills/:billId", requireAuth, async (req, res) => {
   const billId = req.params.billId as string;

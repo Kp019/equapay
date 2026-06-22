@@ -3,7 +3,6 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -15,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
+import { useUI } from "@/context/UIContext";
 import { useColors } from "@/hooks/useColors";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "INR", "CAD", "AUD", "JPY", "SGD"];
@@ -25,23 +25,22 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const { currency, setCurrency, groups, bills, personalExpenses } = useApp();
+  const { confirm } = useUI();
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
   const totalItems = bills.reduce((s, b) => s + b.items.length, 0);
 
   function handleLogout() {
-    Alert.alert("Sign out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out",
-        style: "destructive",
-        onPress: async () => {
-          try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
-          await logout();
-          router.replace("/auth");
-        },
+    confirm({
+      title: "Sign out",
+      message: "Are you sure you want to sign out?",
+      confirmText: "Sign Out",
+      destructive: true,
+      onConfirm: async () => {
+        await logout();
+        router.replace("/auth");
       },
-    ]);
+    });
   }
 
   return (

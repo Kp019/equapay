@@ -74,6 +74,7 @@ interface AppContextValue {
   createGroup: (name: string, memberUserIds: string[]) => Promise<Group>;
   deleteGroup: (id: string) => Promise<void>;
   addBill: (bill: Omit<Bill, "id" | "date">) => Promise<void>;
+  editBill: (billId: string, updates: Partial<Bill>) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
   joinGroupByCode: (code: string) => Promise<Group>;
   getInviteCode: (groupId: string) => Promise<string>;
@@ -202,6 +203,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify(bill),
       });
       setBills((prev) => [...prev, b]);
+    },
+    [apiRequest]
+  );
+
+  const editBill = useCallback(
+    async (billId: string, updates: Partial<Bill>) => {
+      const { bill } = await apiRequest<{ bill: Bill }>(`/bills/${billId}`, {
+        method: "PUT",
+        body: JSON.stringify(updates),
+      });
+      setBills((prev) => prev.map((b) => (b.id === billId ? bill : b)));
     },
     [apiRequest]
   );
@@ -348,6 +360,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         createGroup,
         deleteGroup,
         addBill,
+        editBill,
         deleteBill,
         joinGroupByCode,
         getInviteCode,

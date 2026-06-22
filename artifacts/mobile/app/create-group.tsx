@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
+import { useUI } from "@/context/UIContext";
 import { useColors } from "@/hooks/useColors";
 
 interface UserResult {
@@ -32,6 +33,7 @@ export default function CreateGroupScreen() {
   const router = useRouter();
   const { createGroup } = useApp();
   const { user, apiRequest } = useAuth();
+  const { showToast } = useUI();
 
   const [groupName, setGroupName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -90,7 +92,7 @@ export default function CreateGroupScreen() {
 
   async function handleCreate() {
     if (!groupName.trim()) {
-      Alert.alert("Group name required", "Please enter a name for your group.");
+      showToast({ title: "Group name required", message: "Please enter a name for your group.", type: "error" });
       return;
     }
     setLoading(true);
@@ -102,7 +104,7 @@ export default function CreateGroupScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (e: any) {
-      Alert.alert("Error", e.message ?? "Failed to create group.");
+      showToast({ title: "Error", message: e.message ?? "Failed to create group.", type: "error" });
     } finally {
       setLoading(false);
     }

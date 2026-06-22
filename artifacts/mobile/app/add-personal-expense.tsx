@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
+import { useUI } from "@/context/UIContext";
 import { useColors } from "@/hooks/useColors";
 
 const CATEGORIES = [
@@ -34,6 +35,7 @@ export default function AddPersonalExpenseScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { addPersonalExpense } = useApp();
+  const { showToast } = useUI();
 
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
@@ -46,11 +48,11 @@ export default function AddPersonalExpenseScreen() {
 
   async function handleAdd() {
     if (!title.trim()) {
-      Alert.alert("Title required", "Enter a description for this expense.");
+      showToast({ title: "Title required", message: "Enter a description for this expense.", type: "error" });
       return;
     }
     if (!totalAmount || totalAmount <= 0) {
-      Alert.alert("Amount required", "Enter a valid amount.");
+      showToast({ title: "Amount required", message: "Enter a valid amount.", type: "error" });
       return;
     }
     setLoading(true);
@@ -64,7 +66,7 @@ export default function AddPersonalExpenseScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch {
-      Alert.alert("Error", "Failed to add expense.");
+      showToast({ title: "Error", message: "Failed to add expense.", type: "error" });
     } finally {
       setLoading(false);
     }

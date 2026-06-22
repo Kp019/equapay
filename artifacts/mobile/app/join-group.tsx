@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
+import { useUI } from "@/context/UIContext";
 import { useColors } from "@/hooks/useColors";
 
 export default function JoinGroupScreen() {
@@ -22,13 +23,14 @@ export default function JoinGroupScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { joinGroupByCode } = useApp();
+  const { showToast } = useUI();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleJoin() {
     const trimmed = code.trim().toUpperCase();
     if (trimmed.length < 6) {
-      Alert.alert("Enter a valid code", "Invite codes are 8 characters.");
+      showToast({ title: "Enter a valid code", message: "Invite codes are 8 characters.", type: "error" });
       return;
     }
     setLoading(true);
@@ -38,7 +40,7 @@ export default function JoinGroupScreen() {
       router.replace(`/group/${group.id}` as any);
     } catch (e: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Invalid code", e.message ?? "Could not join group.");
+      showToast({ title: "Invalid code", message: e.message ?? "Could not join group.", type: "error" });
     } finally {
       setLoading(false);
     }

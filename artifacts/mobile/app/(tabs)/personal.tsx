@@ -3,7 +3,6 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -14,6 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
+import { useUI } from "@/context/UIContext";
 import { useColors } from "@/hooks/useColors";
 import { formatCurrency, formatDate } from "@/utils/format";
 
@@ -45,6 +45,7 @@ export default function PersonalScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { personalExpenses, currency, deletePersonalExpense } = useApp();
+  const { confirm } = useUI();
   const [selectedCat, setSelectedCat] = useState("all");
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
@@ -63,15 +64,12 @@ export default function PersonalScreen() {
   }, [filtered]);
 
   function handleDelete(id: string, title: string) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(`Delete "${title}"?`, undefined, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => deletePersonalExpense(id),
-      },
-    ]);
+    confirm({
+      title: `Delete "${title}"?`,
+      confirmText: "Delete",
+      destructive: true,
+      onConfirm: () => deletePersonalExpense(id),
+    });
   }
 
   return (
