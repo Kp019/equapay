@@ -14,5 +14,9 @@
   "devDependencies": {
     "prettier": "^3.8.3",
     "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "expo": "~54.0.27",
+    "@expo/cli": "54.0.23"
   }
 }
