@@ -11,13 +11,23 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EAS_BUILD_WORKINGDIR": "./artifacts/mobile"
+        "EXPO_PUBLIC_API_URL": "https://equapay.onrender.com/api"
+      }
+    },
+    "apk": {
+      "extends": "production",
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://equapay.onrender.com/api"
+      },
+      "android": {
+        "buildType": "apk"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EAS_BUILD_WORKINGDIR": "./artifacts/mobile"
+        "EXPO_PUBLIC_API_URL": "https://equapay.onrender.com/api"
       }
     }
   },

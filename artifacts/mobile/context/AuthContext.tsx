@@ -6,9 +6,34 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { Platform } from "react-native";
 
-const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:8080";
-const API_BASE = `http${domain.includes("localhost") ? "" : "s"}://${domain}/api`;
+function getApiBase() {
+  const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/+$/, "");
+  }
+
+  const configuredDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
+  if (configuredDomain) {
+    const domain = configuredDomain
+      .replace(/^https?:\/\//, "")
+      .replace(/\/+$/, "");
+    const protocol =
+      domain.startsWith("localhost") || domain.startsWith("127.0.0.1")
+        ? "http"
+        : "https";
+    return `${protocol}://${domain}/api`;
+  }
+
+  if (Platform.OS === "web") {
+    return "/api";
+  }
+
+  return "https://equapay.onrender.com/api";
+}
+
+const API_BASE = getApiBase();
 const TOKEN_KEY = "splitwise_auth_token";
 
 export interface AuthUser {

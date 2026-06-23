@@ -1,3 +1,6 @@
+import "react-native-reanimated";
+import "react-native-gesture-handler";
+
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -9,6 +12,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -21,6 +25,22 @@ import { UIProvider } from "@/context/UIContext";
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
+
+function PwaRegistration() {
+  useEffect(() => {
+    if (
+      Platform.OS === "web" &&
+      "serviceWorker" in navigator &&
+      process.env.NODE_ENV === "production"
+    ) {
+      navigator.serviceWorker.register("/sw.js").catch((error) => {
+        console.warn("Service worker registration failed:", error);
+      });
+    }
+  }, []);
+
+  return null;
+}
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -91,12 +111,13 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
+      <PwaRegistration />
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <UIProvider>
               <AppProvider>
-                <GestureHandlerRootView>
+                <GestureHandlerRootView style={{ flex: 1 }}>
                   <KeyboardProvider>
                     <RootLayoutNav />
                   </KeyboardProvider>

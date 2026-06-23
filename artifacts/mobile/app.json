@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "EquaPay",
-    "slug": "equapay",
+    "slug": "workspace",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -24,7 +24,12 @@
       "package": "devkp.equapay"
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "output": "single",
+      "name": "EquaPay",
+      "shortName": "EquaPay",
+      "themeColor": "#00B87A",
+      "backgroundColor": "#F6FBF9"
     },
     "plugins": [
       [
