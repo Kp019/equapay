@@ -1,11 +1,11 @@
 {
   "expo": {
     "name": "EquaPay",
-    "slug": "mobile",
+    "slug": "equapay",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "equapay",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -14,9 +14,15 @@
       "backgroundColor": "#00B87A"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "devkp.equapay",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
-    "android": {},
+    "android": {
+      "package": "devkp.equapay"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -24,7 +30,7 @@
       [
         "expo-router",
         {
-          "origin": "https://replit.com/"
+          "origin": "https://equapay.onrender.com/"
         }
       ],
       "expo-font",
@@ -33,6 +39,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "0977012a-aabd-45c6-8c0e-3c949885beb1"
+      }
     }
   }
 }
